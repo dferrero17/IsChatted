@@ -9,57 +9,188 @@
 #include <unordered_set>
 #include <unistd.h>
 #include <vector>
+#include <filesystem>
 
-class Encode {
+class Prompt {
 
     public:
-
-        Encode(
-            std::string chatFile,
-            std::string humanFile, 
-            std::string inputFile,
+        Prompt(
+            std::string fileDir,
             int k,
-            int sizeLimit,
-            double alpha)
-        : 
-        chatFile(chatFile),
-        humanFile(humanFile),
-        inputFile(inputFile),
+            int sizeLimit)
+        :
+        fileDir(fileDir),
         k(k),
-        alpha(alpha),
-        gptPrompt(chatFile, k, sizeLimit),
-        humanPrompt(humanFile, k, sizeLimit) {} ;
+        sizeLimit(sizeLimit) {};
+    
+    void populateTable(std::string file){
 
-    void openFile(std::string file){
-        std::ifstream File(file, std::ios::binary);
-        if (!File) {
+        lastKSymbols = "";
+
+        std::ifstream inputFile(file, std::ios::binary);
+        if (!inputFile) {
             std::cerr << "Failed to open file: " << file << std::endl;
             exit(1);
         }
+
+        char symbol;
+        while (inputFile.get(symbol)) {
+            alphabet.insert(symbol);;
+        }
+        inputFile.close();
+        
+        //printAlphabet();
+
+        inputFile.open(file);
+        while(inputFile.get(symbol)){
+            processSymbol(symbol);
+        }
+        inputFile.close();
+    
     }
 
-    void start(){
+    void printAlphabet() const {
+        std::cout << "Alphabet: ";
+        for (char c : alphabet) {
+            std::cout << c << "";
+        }
+        std::cout << std::endl;
+    }
 
-        //just check first if it is possible to open all the files
-        openFile(chatFile);
-        openFile(humanFile);
-        openFile(inputFile);
-        
-        // populate both tables
-        gptPrompt.populateTable();
-        humanPrompt.populateTable();
+    void printPromptTable() const {
+        std::cout << "Prompt Table:" << std::endl;
+        for (const auto& outer_pair : promptTable) {
+            std::cout << "Key: " << outer_pair.first << std::endl;
+            std::cout << "Values: " << std::endl;
+            for (const auto& inner_pair : outer_pair.second) {
+                std::cout << "  " << inner_pair.first << ": " << inner_pair.second << "; ";
+            }
+            std::cout << std::endl;
+        }
+    }
 
-        compareToReferences();
-
+    std::unordered_map<std::string, std::unordered_map<char, double>> getTable(){
+        return promptTable;
     };
+   
+    std::unordered_set<char> getAlphabet(){
+        return alphabet;
+    }
+
 
     private:
-        std::string chatFile, humanFile, inputFile;
+        std::string fileDir;
+        int k, sizeLimit;
+
+        std::string lastKSymbols = "";
+        std::unordered_set<char> alphabet;
+        std::unordered_map<std::string, std::unordered_map<char, double>> promptTable;
+
+    void processSymbol(char currentSymbol){
+
+        if (lastKSymbols.size() == k) { 
+            updateCountersTable(currentSymbol);
+        }
+        updateLastKSymbols(currentSymbol);
+    }
+
+    void updateCountersTable(char symbol){
+
+        auto it = promptTable.find(lastKSymbols);
+        if (it == promptTable.end()) {                      // key not in table
+            
+            std::unordered_map<char, double> charCounter;
+            for (char c : alphabet) {
+                charCounter[c] = 0;
+            }
+            charCounter[symbol] = 1;
+            promptTable.insert({lastKSymbols, charCounter});
+
+        } else {                                            // key in table
+            std::unordered_map<char, double>& charCounter = it->second; 
+
+            if (charCounter[symbol] == sizeLimit){
+                resizeTable();
+            }
+
+            charCounter[symbol]++;
+            promptTable[lastKSymbols] = charCounter;
+
+        }
+    }
+    
+    void updateLastKSymbols(char symbol) {
+        if (lastKSymbols.size() == k) { 
+            lastKSymbols.erase(0, 1); 
+        }
+        lastKSymbols += symbol;
+    }
+
+    void resizeTable() {
+        // if size has reached its limit, halve the values of int
+        for (auto& entry : promptTable) {
+            std::unordered_map<char, double>& charCounter = entry.second;
+            for (auto& pair : charCounter) {
+                pair.second /= 2;
+            }
+        }
+    }
+ 
+};
+
+    class Encode {
+
+        public:
+
+            Encode(
+                std::string chatDir,
+                std::string humanDir, 
+                std::string inputFile,
+                int k,
+                int sizeLimit,
+                double alpha)
+            : 
+            chatDir(chatDir),
+            humanDir(humanDir),
+            inputFile(inputFile),
+            k(k),
+            alpha(alpha),
+            sizeLimit(sizeLimit),
+            gptPrompt(chatDir, k, sizeLimit),
+            humanPrompt(humanDir, k, sizeLimit) {} ;
+
+        void openFile(std::string file){
+            std::ifstream File(file, std::ios::binary);
+            if (!File) {
+                std::cerr << "Failed to open file: " << file << std::endl;
+                exit(1);
+            }
+        }
+
+        void start(){
+
+            //just check first if it is possible to open all the files
+            openFile(inputFile);
+            
+            // populate both tables
+            for (const auto & entry : std::filesystem::directory_iterator(chatDir))
+                gptPrompt.populateTable(entry.path().string());
+
+            for (const auto & entry : std::filesystem::directory_iterator(humanDir))
+                humanPrompt.populateTable(entry.path().string());
+
+            compareToReferences();
+
+        };
+
+    private:
+        std::string chatDir, humanDir, inputFile;
         int k, sizeLimit;
         double alpha;
 
-        int GPTBits, humanBits, totalSymbols = 0; 
-        std::string context;        //similiar to lastKSymbols
+        double GPTBits = 0.0, humanBits = 0.0;
+        int totalSymbols = 0; 
+        std::string context = "";        //similiar to lastKSymbols
         Prompt gptPrompt;
         Prompt humanPrompt;
 
@@ -72,9 +203,7 @@ class Encode {
             }
 
             char symbol;
-            file.open(inputFile);
             while(file.get(symbol)){
-
                 if (context.size() == k){
                     GPTBits += processSymbol(symbol, gptPrompt.getTable(), gptPrompt.getAlphabet());
                     humanBits += processSymbol(symbol, humanPrompt.getTable(), humanPrompt.getAlphabet());
@@ -83,6 +212,10 @@ class Encode {
                 updateContext(symbol);
                 totalSymbols++;   
             }
+
+            std::cout << "GPT bits: " << GPTBits << std::endl;
+            std::cout << "Human bits: " << humanBits << std::endl;
+            std::cout << "Total symbols: " << totalSymbols << std::endl;
 
             file.close();
         }
@@ -96,8 +229,7 @@ class Encode {
             context += symbol;
         }
 
-
-        double calculateProb(std::unordered_map<char, int>& alphabetCounters, char symbol, std::unordered_set<char> alphabet){
+        double calculateProb(std::unordered_map<char, double>& alphabetCounters, char symbol, std::unordered_set<char> alphabet){
 
             double sumCounters = alpha*alphabet.size();
             for (const auto& pair : alphabetCounters) {
@@ -105,18 +237,18 @@ class Encode {
             }
 
             double probability = (alphabetCounters[symbol] + alpha) / sumCounters;
-            
+
             return probability;
         }
 
-        int processSymbol(char symbol, std::unordered_map<std::string, std::unordered_map<char, int>> table, std::unordered_set<char> alphabet){
+        double processSymbol(char symbol, std::unordered_map<std::string, std::unordered_map<char, double>> table, std::unordered_set<char> alphabet){
             //try to find the context in the table
             auto it = table.find(context);
             if (it == table.end()) {                      // key not in table
-                return -log2(1/alphabet.size());          //just a normal char? TODO: ask professor
+                return -log2(1.0/alphabet.size());
             }
             else{
-                std::unordered_map<char, int>& alphabetCounters = it->second; 
+                std::unordered_map<char, double>& alphabetCounters = it->second; 
                 return -log2(calculateProb(alphabetCounters, symbol, alphabet));
             }
             return 0;
@@ -124,130 +256,25 @@ class Encode {
 
 };
 
-class Prompt {
-
-    public:
-        Prompt(
-            std::string file,
-            int k,
-            int sizeLimit)
-        :
-        file(file),
-        k(k),
-        sizeLimit(sizeLimit) {};
-    
-    void populateTable(){
-
-        std::ifstream inputFile(file, std::ios::binary);
-        if (!inputFile) {
-            std::cerr << "Failed to open file: " << file << std::endl;
-            exit(1);
-        }
-
-        char symbol;
-        while (inputFile.get(symbol)) {
-            alphabet.insert(symbol);;
-        }
-        
-        char symbol;
-        inputFile.open(file);
-        while(inputFile.get(symbol)){
-            processSymbol(symbol);
-        }
-        inputFile.close();
-    
-    }
-
-    std::unordered_map<std::string, std::unordered_map<char, int>> getTable(){
-        return promptTable;
-    };
-
-    
-    std::unordered_set<char> getAlphabet(){
-        return alphabet;
-    }
-
-
-    private:
-        std::string file;
-        int k, sizeLimit;
-
-        std::string lastKSymbols = "";
-        std::unordered_set<char> alphabet;
-        std::unordered_map<std::string, std::unordered_map<char, int>> promptTable;
-
-    void processSymbol(char currentSymbol){
-        
-        if (lastKSymbols.size() == k) { 
-            updateCountersTable(currentSymbol);
-        }
-
-        updateLastKSymbols(currentSymbol);
-
-    }
-
-    void updateCountersTable(char symbol){
-
-        auto it = promptTable.find(lastKSymbols);
-        if (it == promptTable.end()) {                      // key not in table
-            
-            std::unordered_map<char, int> charCounter;
-            for (char c : alphabet) {
-                charCounter[c] = 0;
-            }
-            charCounter[symbol] = 1;
-            
-            promptTable.insert({lastKSymbols, charCounter});
-
-        } else {                                            // key in table
-            std::unordered_map<char, int>& charCounter = it->second; 
-            charCounter[symbol]++;
-
-            if (charCounter[symbol] == sizeLimit){
-                resizeTable(promptTable);
-            }
-            
-        }
-    }
-    
-    void updateLastKSymbols(char symbol) {
-        if (lastKSymbols.size() == k) { 
-            lastKSymbols.erase(0, 1); 
-        }
-
-        lastKSymbols += symbol;
-    }
-
-    void resizeTable(std::unordered_map<std::string, std::unordered_map<char, int>>& promptTable) {
-        // if size has reached its limit, halve the values of int
-        for (auto& entry : promptTable) {
-            std::unordered_map<char, int>& charCounter = entry.second;
-            for (auto& pair : charCounter) {
-                pair.second /= 2;
-            }
-        }
-    }
- 
-};
-
 
 int main(int argc, char* argv[]) {
 
-    std::string chatFile, 
-                humanFile,
-                inputFile = "";
+    std::string chatDir = "./gpt_files/"; 
+    std::string humanDir = "./human_files/";
 
-    int k = 0, sizeLimit = 5000;
+    std::string inputFile = "";
+
+    int k = 0, sizeLimit = 5;
     double alpha = 0.0;
 
     int opt;
     while ((opt = getopt(argc, argv, "rc:rh:t:k:a:s:")) != -1) {
         switch (opt) {
-            case 'rc':
-                chatFile = optarg;
+            case 'r':
+                chatDir = optarg;
                 break;
-            case 'rh':
-                humanFile = optarg;
+            case 'c':
+                humanDir = optarg;
                 break;
             case 't':
                 inputFile = optarg;
@@ -263,20 +290,20 @@ int main(int argc, char* argv[]) {
                 break;
             case '?':
                 std::cerr << "Wrong arguments were used.\n" << std::endl;
-                std::cerr << "Usage: " << argv[0] << " -rc <chatFilePath> -rh <humanFilePath> -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
-                std::cerr << "Additional arguments: -l <sizeLimit>" << std::endl;
+                std::cerr << "Usage: " << argv[0] << " -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
+                std::cerr << "Additional arguments: -rc <chatFilePath> -rh <humanFilePath> -s <sizeLimit>" << std::endl;
                 return 1;
         }
     }
 
-    if (chatFile.empty() || humanFile.empty() || inputFile.empty() || k == 0 || alpha == 0.0) {
+    if (inputFile.empty() || k == 0 || alpha == 0.0) {
         std::cerr << "All options are required and should not be null.\n" << std::endl;
-        std::cerr << "Usage: " << argv[0] << " -rc <chatFilePath> -rh <humanFilePath> -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
-        std::cerr << "Additional arguments: -l <sizeLimit>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
+        std::cerr << "Additional arguments: -rc <chatFilePath> -rh <humanFilePath> -s <sizeLimit>" << std::endl;
         return 1;
     }
 
-    Encode main(chatFile, humanFile, inputFile, k, alpha, sizeLimit);
+    Encode main(chatDir, humanDir, inputFile, k, sizeLimit, alpha);
     main.start();
 
     return 0;
