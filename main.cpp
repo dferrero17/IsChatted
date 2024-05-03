@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <cctype>
 #include <unordered_map>
 #include <unordered_set>
 #include <unistd.h>
@@ -16,10 +17,12 @@ class Prompt {
     public:
         Prompt(
             std::string fileDir,
+            std::unordered_set<char> filters,
             int k,
             int sizeLimit)
         :
         fileDir(fileDir),
+        filters(filters),
         k(k),
         sizeLimit(sizeLimit) {};
     
@@ -27,7 +30,7 @@ class Prompt {
 
         lastKSymbols = "";
 
-        std::ifstream inputFile(file, std::ios::binary);
+        std::ifstream inputFile(file);
         if (!inputFile) {
             std::cerr << "Failed to open file: " << file << std::endl;
             exit(1);
@@ -35,15 +38,24 @@ class Prompt {
 
         char symbol;
         while (inputFile.get(symbol)) {
-            alphabet.insert(symbol);;
+            symbol = conversion(symbol);
+            if (symbol == '\0'){
+                continue;
+            }
+            alphabet.insert(symbol);
         }
         inputFile.close();
         
-        //printAlphabet();
+        printAlphabet();
 
         inputFile.open(file);
         while(inputFile.get(symbol)){
+            symbol = conversion(symbol);
+            if (symbol == '\0'){
+                continue;
+            }
             processSymbol(symbol);
+            
         }
         inputFile.close();
     
@@ -80,6 +92,7 @@ class Prompt {
 
     private:
         std::string fileDir;
+        std::unordered_set<char> filters;
         int k, sizeLimit;
 
         std::string lastKSymbols = "";
@@ -135,6 +148,22 @@ class Prompt {
             }
         }
     }
+
+    char conversion(char symbol) {
+        if (filters.find('n') != filters.end() && std::isdigit(symbol)) {
+            return '\0';
+        }
+        if (filters.find('s') != filters.end() && std::ispunct(symbol)) {
+            return '\0';
+        }
+        if (filters.find('e') != filters.end() && std::isspace(symbol)) {
+            return '\0';
+        }
+        if (filters.find('c') != filters.end() && std::islower(symbol)) {
+            return std::toupper(symbol);
+        }
+        return symbol; 
+    }
  
 };
 
@@ -144,8 +173,9 @@ class Prompt {
 
             Encode(
                 std::string chatDir,
-                std::string humanDir, 
+                std::string humanDir,
                 std::string inputFile,
+                std::unordered_set<char> filters,
                 int k,
                 int sizeLimit,
                 double alpha)
@@ -153,14 +183,15 @@ class Prompt {
             chatDir(chatDir),
             humanDir(humanDir),
             inputFile(inputFile),
+            filters(filters),
             k(k),
             alpha(alpha),
             sizeLimit(sizeLimit),
-            gptPrompt(chatDir, k, sizeLimit),
-            humanPrompt(humanDir, k, sizeLimit) {} ;
+            gptPrompt(chatDir, filters, k, sizeLimit),
+            humanPrompt(humanDir, filters, k, sizeLimit) {} ;
 
         void openFile(std::string file){
-            std::ifstream File(file, std::ios::binary);
+            std::ifstream File(file);
             if (!File) {
                 std::cerr << "Failed to open file: " << file << std::endl;
                 exit(1);
@@ -179,12 +210,16 @@ class Prompt {
             for (const auto & entry : std::filesystem::directory_iterator(humanDir))
                 humanPrompt.populateTable(entry.path().string());
 
+            //gptPrompt.printPromptTable();
+            //humanPrompt.printPromptTable();
+
             compareToReferences();
 
         };
 
     private:
         std::string chatDir, humanDir, inputFile;
+        std::unordered_set<char> filters;
         int k, sizeLimit;
         double alpha;
 
@@ -196,7 +231,7 @@ class Prompt {
 
         void compareToReferences(){
             //calculate encoding for both the tables
-            std::ifstream file(inputFile, std::ios::binary);
+            std::ifstream file(inputFile);
             if (!file) {
                 std::cerr << "Failed to open file: " << inputFile << std::endl;
                 exit(1);
@@ -204,13 +239,18 @@ class Prompt {
 
             char symbol;
             while(file.get(symbol)){
+                symbol = conversion(symbol);
+                if (symbol == '\0'){
+                    continue;
+                }
                 if (context.size() == k){
                     GPTBits += processSymbol(symbol, gptPrompt.getTable(), gptPrompt.getAlphabet());
                     humanBits += processSymbol(symbol, humanPrompt.getTable(), humanPrompt.getAlphabet());
                 }
-
+                std::cout << "symbol: " << symbol << std::endl;
                 updateContext(symbol);
                 totalSymbols++;   
+                
             }
 
             std::cout << "GPT bits: " << GPTBits << std::endl;
@@ -254,6 +294,23 @@ class Prompt {
             return 0;
         }
 
+        char conversion(char symbol){
+
+            if (filters.find('n') != filters.end() && std::isdigit(symbol)) {
+                return '\0';
+            }
+            if (filters.find('s') != filters.end() && std::ispunct(symbol)) {
+                return '\0';
+            }
+            if (filters.find('e') != filters.end() && std::isspace(symbol)) {
+                return '\0';
+            }
+            if (filters.find('c') != filters.end() && std::islower(symbol)) {
+                return std::toupper(symbol);
+            }
+            return symbol; 
+        }
+ 
 };
 
 
@@ -262,22 +319,25 @@ int main(int argc, char* argv[]) {
     std::string chatDir = "./gpt_files/"; 
     std::string humanDir = "./human_files/";
 
-    std::string inputFile = "";
+    std::string inputFile = "", filters="";
 
     int k = 0, sizeLimit = 5;
     double alpha = 0.0;
 
     int opt;
-    while ((opt = getopt(argc, argv, "rc:rh:t:k:a:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "g:h:t:f:k:a:s:")) != -1) {
         switch (opt) {
-            case 'r':
+            case 'g':
                 chatDir = optarg;
                 break;
-            case 'c':
+            case 'h':
                 humanDir = optarg;
                 break;
             case 't':
                 inputFile = optarg;
+                break;
+            case 'f':
+                filters = optarg;
                 break;
             case 'k':
                 k = std::stoi(optarg);
@@ -291,7 +351,7 @@ int main(int argc, char* argv[]) {
             case '?':
                 std::cerr << "Wrong arguments were used.\n" << std::endl;
                 std::cerr << "Usage: " << argv[0] << " -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
-                std::cerr << "Additional arguments: -rc <chatFilePath> -rh <humanFilePath> -s <sizeLimit>" << std::endl;
+                std::cerr << "Additional arguments: -g <chatFilePath> -h <humanFilePath> -f <filters> -s <sizeLimit>" << std::endl;
                 return 1;
         }
     }
@@ -299,11 +359,23 @@ int main(int argc, char* argv[]) {
     if (inputFile.empty() || k == 0 || alpha == 0.0) {
         std::cerr << "All options are required and should not be null.\n" << std::endl;
         std::cerr << "Usage: " << argv[0] << " -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
-        std::cerr << "Additional arguments: -rc <chatFilePath> -rh <humanFilePath> -s <sizeLimit>" << std::endl;
+        std::cerr << "Additional arguments: -g <chatFilePath> -h <humanFilePath> -s <sizeLimit>" << std::endl;
         return 1;
     }
 
-    Encode main(chatDir, humanDir, inputFile, k, sizeLimit, alpha);
+    std::unordered_set<char> acceptedFilters = {'n', 's', 'e', 'c'};  //numbers, symbols, space, case insensitiveness
+    std::unordered_set<char> acceptedFilters_ = {};
+
+    for (char c : filters) {
+        if (acceptedFilters.find(std::tolower(c)) == acceptedFilters.end()) {
+            std::cerr << "Filter not found." << std::endl;
+            return 1;
+        }
+
+        acceptedFilters_.insert(std::tolower(c));
+    }
+
+    Encode main(chatDir, humanDir, inputFile, acceptedFilters_, k, sizeLimit, alpha);
     main.start();
 
     return 0;
