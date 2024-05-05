@@ -46,7 +46,7 @@ class Prompt {
         }
         inputFile.close();
         
-        printAlphabet();
+        //printAlphabet();
 
         inputFile.open(file);
         while(inputFile.get(symbol)){
@@ -247,7 +247,7 @@ class Prompt {
                     GPTBits += processSymbol(symbol, gptPrompt.getTable(), gptPrompt.getAlphabet());
                     humanBits += processSymbol(symbol, humanPrompt.getTable(), humanPrompt.getAlphabet());
                 }
-                std::cout << "symbol: " << symbol << std::endl;
+                //std::cout << "symbol: " << symbol << std::endl;
                 updateContext(symbol);
                 totalSymbols++;   
                 
@@ -319,10 +319,10 @@ int main(int argc, char* argv[]) {
     std::string chatDir = "./gpt_files/"; 
     std::string humanDir = "./human_files/";
 
-    std::string inputFile = "", filters="";
+    std::string inputFile = "analyze.txt", filters="nsc";
 
-    int k = 0, sizeLimit = 5;
-    double alpha = 0.0;
+    int k = 3, sizeLimit = 5;
+    double alpha = 0.5;
 
     int opt;
     while ((opt = getopt(argc, argv, "g:h:t:f:k:a:s:")) != -1) {

@@ -28,7 +28,7 @@ def write_gpt_text(paragraph, filename, model):
         file.writelines(chatted_paragraph)
 
 def extract_paragraph(datafile, model):
-    with open(datafile, "r") as file:
+    with open(datafile, "r", encoding='utf-8-sig') as file:
         lines = file.readlines()
 
     paragraph = []
