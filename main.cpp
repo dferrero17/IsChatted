@@ -162,6 +162,9 @@ class Prompt {
         if (filters.find('c') != filters.end() && std::islower(symbol)) {
             return std::toupper(symbol);
         }
+        if ((!std::isalpha(symbol) && !std::ispunct(symbol) && !std::isspace(symbol)) || (symbol == '\n')) {
+            return '\0';
+        }   
         return symbol; 
     }
  
@@ -174,7 +177,10 @@ class Prompt {
             Encode(
                 std::string chatDir,
                 std::string humanDir,
-                std::string inputFile,
+                std::string inputDir,
+                std::string stringFilters,
+                std::string outputFile,
+                bool isGPT,
                 std::unordered_set<char> filters,
                 int k,
                 int sizeLimit,
@@ -182,7 +188,10 @@ class Prompt {
             : 
             chatDir(chatDir),
             humanDir(humanDir),
-            inputFile(inputFile),
+            inputDir(inputDir),
+            stringFilters(stringFilters),
+            outputFile(outputFile),
+            isGPT(isGPT),
             filters(filters),
             k(k),
             alpha(alpha),
@@ -190,18 +199,8 @@ class Prompt {
             gptPrompt(chatDir, filters, k, sizeLimit),
             humanPrompt(humanDir, filters, k, sizeLimit) {} ;
 
-        void openFile(std::string file){
-            std::ifstream File(file);
-            if (!File) {
-                std::cerr << "Failed to open file: " << file << std::endl;
-                exit(1);
-            }
-        }
 
         void start(){
-
-            //just check first if it is possible to open all the files
-            openFile(inputFile);
             
             // populate both tables
             for (const auto & entry : std::filesystem::directory_iterator(chatDir))
@@ -210,18 +209,19 @@ class Prompt {
             for (const auto & entry : std::filesystem::directory_iterator(humanDir))
                 humanPrompt.populateTable(entry.path().string());
 
-            //gptPrompt.printPromptTable();
-            //humanPrompt.printPromptTable();
-
-            compareToReferences();
+            //gptPrompt.printAlphabet();
+            //humanPrompt.printAlphabet();
+            for (const auto & entry : std::filesystem::directory_iterator(inputDir))
+                compareToReferences(entry.path().string());
 
         };
 
     private:
-        std::string chatDir, humanDir, inputFile;
+        std::string chatDir, humanDir, inputDir, stringFilters, outputFile;
         std::unordered_set<char> filters;
         int k, sizeLimit;
         double alpha;
+        bool isGPT;
 
         double GPTBits = 0.0, humanBits = 0.0;
         int totalSymbols = 0; 
@@ -229,11 +229,21 @@ class Prompt {
         Prompt gptPrompt;
         Prompt humanPrompt;
 
-        void compareToReferences(){
+        void initialize(){
+            context = "";
+            totalSymbols = 0, GPTBits = 0.0, humanBits = 0.0;
+        }
+
+        void compareToReferences(std::string fileName){
+
+            auto start = std::chrono::high_resolution_clock::now();
+
+            initialize();
+            
             //calculate encoding for both the tables
-            std::ifstream file(inputFile);
+            std::ifstream file(fileName);
             if (!file) {
-                std::cerr << "Failed to open file: " << inputFile << std::endl;
+                std::cerr << "Failed to open file: " << fileName << std::endl;
                 exit(1);
             }
 
@@ -253,11 +263,42 @@ class Prompt {
                 
             }
 
-            std::cout << "GPT bits: " << GPTBits << std::endl;
-            std::cout << "Human bits: " << humanBits << std::endl;
-            std::cout << "Total symbols: " << totalSymbols << std::endl;
-
             file.close();
+
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> elapsed = end - start;
+            
+            bool inferedGPT = false;
+            if (GPTBits > humanBits){
+                inferedGPT = true;
+            }
+
+            if (outputFile != ""){
+                writeToFile(inferedGPT, elapsed.count());
+            }
+            else {
+                std::cout << "GPT bits: " << GPTBits << std::endl;
+                std::cout << "Human bits: " << humanBits << std::endl;
+                std::cout << "Total symbols: " << totalSymbols << std::endl;
+            }
+        }
+
+        void writeToFile(bool inferedGPT, double runtime){
+            //<nomeDoFicheiroOriginal>, <k>, <alpha>, 
+            //<filtros>, <qual a origem - gpt/humano>, 
+            //<o que o codigo diz que é - gpt/humano>, 
+            //<razao>, <tempo de execucao>
+
+            std::stringstream ss;
+            ss << k << "," << alpha << "," << stringFilters << "," //colocar filters
+                << isGPT << "," << inferedGPT << "," << GPTBits/humanBits << ","
+                << totalSymbols << ","
+                << runtime << std::endl;
+            
+            // File writing
+            std::ofstream outFile(outputFile, std::ios::app);
+            outFile << ss.str();
+            outFile.close();
         }
 
         void updateContext(char symbol){
@@ -308,6 +349,9 @@ class Prompt {
             if (filters.find('c') != filters.end() && std::islower(symbol)) {
                 return std::toupper(symbol);
             }
+            if ((!std::isalpha(symbol) && !std::ispunct(symbol) && !std::isspace(symbol)) || (symbol == '\n')) {
+                return '\0';
+            }  
             return symbol; 
         }
  
@@ -318,14 +362,18 @@ int main(int argc, char* argv[]) {
 
     std::string chatDir = "./gpt_files/"; 
     std::string humanDir = "./human_files/";
+    std::string inputDir = "./analyze/gpt_analyze/";
 
-    std::string inputFile = "analyze.txt", filters="nsc";
+    std::string outputFile = "";
+    std::string filters="nsc";
 
-    int k = 3, sizeLimit = 5;
+    bool isGPT = false;
+
+    int k = 3, sizeLimit = 5000;
     double alpha = 0.5;
 
     int opt;
-    while ((opt = getopt(argc, argv, "g:h:t:f:k:a:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "g:h:t:f:k:a:s:o:b:")) != -1) {
         switch (opt) {
             case 'g':
                 chatDir = optarg;
@@ -334,7 +382,7 @@ int main(int argc, char* argv[]) {
                 humanDir = optarg;
                 break;
             case 't':
-                inputFile = optarg;
+                inputDir = optarg;
                 break;
             case 'f':
                 filters = optarg;
@@ -348,15 +396,21 @@ int main(int argc, char* argv[]) {
             case 's':
                 sizeLimit = std::stoi(optarg);
                 break;
+            case 'o':
+                outputFile = optarg;
+                break;
+            case 'b':   //TODO: mudar isto
+                isGPT = true;
+                break;
             case '?':
                 std::cerr << "Wrong arguments were used.\n" << std::endl;
-                std::cerr << "Usage: " << argv[0] << " -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
+                std::cerr << "Usage: " << argv[0] << " -t <inputDir> -k <anchorSize> -a <alpha>" << std::endl;
                 std::cerr << "Additional arguments: -g <chatFilePath> -h <humanFilePath> -f <filters> -s <sizeLimit>" << std::endl;
                 return 1;
         }
     }
 
-    if (inputFile.empty() || k == 0 || alpha == 0.0) {
+    if (inputDir.empty() || k == 0 || alpha == 0.0) {
         std::cerr << "All options are required and should not be null.\n" << std::endl;
         std::cerr << "Usage: " << argv[0] << " -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
         std::cerr << "Additional arguments: -g <chatFilePath> -h <humanFilePath> -s <sizeLimit>" << std::endl;
@@ -375,7 +429,7 @@ int main(int argc, char* argv[]) {
         acceptedFilters_.insert(std::tolower(c));
     }
 
-    Encode main(chatDir, humanDir, inputFile, acceptedFilters_, k, sizeLimit, alpha);
+    Encode main(chatDir, humanDir, inputDir, filters, outputFile, isGPT, acceptedFilters_, k, sizeLimit, alpha);
     main.start();
 
     return 0;
