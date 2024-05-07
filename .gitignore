@@ -33,7 +33,11 @@
 .env
 *.txt
 
+.vscode/
 gpt_files/
 human_files/
+models/
+plots/
+results/
 venv/
 __pycache__/

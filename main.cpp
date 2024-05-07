@@ -284,10 +284,6 @@ class Prompt {
         }
 
         void writeToFile(bool inferedGPT, double runtime){
-            //<nomeDoFicheiroOriginal>, <k>, <alpha>, 
-            //<filtros>, <qual a origem - gpt/humano>, 
-            //<o que o codigo diz que é - gpt/humano>, 
-            //<razao>, <tempo de execucao>
 
             std::stringstream ss;
             ss << k << "," << alpha << "," << stringFilters << "," //colocar filters
@@ -296,7 +292,7 @@ class Prompt {
                 << runtime << std::endl;
             
             // File writing
-            std::ofstream outFile(outputFile, std::ios::app);
+            std::ofstream outFile("./results/" + outputFile, std::ios::app);
             outFile << ss.str();
             outFile.close();
         }
@@ -360,12 +356,12 @@ class Prompt {
 
 int main(int argc, char* argv[]) {
 
-    std::string chatDir = "./gpt_files/"; 
-    std::string humanDir = "./human_files/";
-    std::string inputDir = "./analyze/gpt_analyze/";
+    std::string chatDir = "./models/gpt-3.5/gpt_files/"; 
+    std::string humanDir = "./models/gpt-3.5/human_files/";
+    std::string inputDir = "./test_files/test_gpt_files/";
 
-    std::string outputFile = "";
-    std::string filters="nsc";
+    std::string outputFile = "", gptArg = "";
+    std::string filters="";
 
     bool isGPT = false;
 
@@ -399,30 +395,53 @@ int main(int argc, char* argv[]) {
             case 'o':
                 outputFile = optarg;
                 break;
-            case 'b':   //TODO: mudar isto
-                isGPT = true;
+            case 'b':
+                gptArg = optarg;
                 break;
             case '?':
                 std::cerr << "Wrong arguments were used.\n" << std::endl;
-                std::cerr << "Usage: " << argv[0] << " -t <inputDir> -k <anchorSize> -a <alpha>" << std::endl;
-                std::cerr << "Additional arguments: -g <chatFilePath> -h <humanFilePath> -f <filters> -s <sizeLimit>" << std::endl;
+                std::cerr << "Usage: " << argv[0] << "-k <k_value> -a <alpha> -s <size?limit> -f <filters> -o <result_file> -g <gpt_folder_directory> -h <human_folder_directory> -t <texts_to_analyze_directory>" << std::endl;
+                std::cerr << "Available filters: " << std::endl;
+                std::cerr << "n - remove numbers" << std::endl;
+                std::cerr << "s - remove symbols" << std::endl;
+                std::cerr << "e - remove spaces" << std::endl;
+                std::cerr << "c - ignore case sensitiveness" << std::endl;
+                std::cerr << "Several filters can be used at once." << std::endl;
                 return 1;
         }
     }
 
-    if (inputDir.empty() || k == 0 || alpha == 0.0) {
-        std::cerr << "All options are required and should not be null.\n" << std::endl;
-        std::cerr << "Usage: " << argv[0] << " -t <inputFileAnalyze> -k <anchorSize> -a <alpha>" << std::endl;
-        std::cerr << "Additional arguments: -g <chatFilePath> -h <humanFilePath> -s <sizeLimit>" << std::endl;
+    if (inputDir.empty() || k == 0 || alpha == 0.0 || outputFile.empty() || humanDir.empty() || chatDir.empty()) {
+        std::cerr << "Some options are required and should not be null.\n" << std::endl;
+        std::cerr << "Usage: " << argv[0] << "-k <k_value> -a <alpha> -s <size?limit> -f <filters> -o <result_file> -g <gpt_folder_directory> -h <human_folder_directory> -t <texts_to_analyze_directory>" << std::endl;
+        std::cerr << "<k_value> and <alpha> should not be null. Directories cannot be null either." << std::endl;
         return 1;
     }
 
-    std::unordered_set<char> acceptedFilters = {'n', 's', 'e', 'c'};  //numbers, symbols, space, case insensitiveness
+    std::transform(gptArg.begin(), gptArg.end(), gptArg.begin(),
+    [](unsigned char c){ return std::tolower(c); });
+    
+    if (gptArg != "gpt" && gptArg != "human"){
+        std::cerr << "Valid arguments for -b flag are <gpt> or <human>." << std::endl;
+        return 1;
+    }
+
+    if (gptArg == "gpt"){
+        isGPT = true;
+    }
+
+    std::unordered_set<char> acceptedFilters = {'n', 's', 'e', 'c', ' '};  //numbers, symbols, space, case insensitiveness
     std::unordered_set<char> acceptedFilters_ = {};
 
     for (char c : filters) {
-        if (acceptedFilters.find(std::tolower(c)) == acceptedFilters.end()) {
+        if ((acceptedFilters.find(std::tolower(c)) == acceptedFilters.end()) && filters!="") {
             std::cerr << "Filter not found." << std::endl;
+            std::cerr << "Available filters: " << std::endl;
+            std::cerr << "n - remove numbers" << std::endl;
+            std::cerr << "s - remove symbols" << std::endl;
+            std::cerr << "e - remove spaces" << std::endl;
+            std::cerr << "c - ignore case sensitiveness" << std::endl;
+            std::cerr << "Several filters can be used at once." << std::endl;
             return 1;
         }
 
