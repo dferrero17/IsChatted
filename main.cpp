@@ -220,7 +220,7 @@ class Prompt {
             }
 
             if (humanDir.back() == '/'){
-                for (const auto & entry : std::filesystem::directory_iterator(chatDir))
+                for (const auto & entry : std::filesystem::directory_iterator(humanDir))
                     humanPrompt.populateTable(entry.path().string());
             }
             else {
