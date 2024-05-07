@@ -269,7 +269,7 @@ class Prompt {
             std::chrono::duration<double> elapsed = end - start;
             
             bool inferedGPT = false;
-            if (GPTBits > humanBits){
+            if (GPTBits < humanBits){
                 inferedGPT = true;
             }
 
@@ -286,7 +286,7 @@ class Prompt {
         void writeToFile(bool inferedGPT, double runtime){
 
             std::stringstream ss;
-            ss << k << "," << alpha << "," << stringFilters << "," //colocar filters
+            ss << k << "," << alpha << "," << sizeLimit << "," << stringFilters << "," //colocar filters
                 << isGPT << "," << inferedGPT << "," << GPTBits/humanBits << ","
                 << totalSymbols << ","
                 << runtime << std::endl;
@@ -411,7 +411,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (inputDir.empty() || k == 0 || alpha == 0.0 || outputFile.empty() || humanDir.empty() || chatDir.empty()) {
+    if (inputDir.empty() || k == 0 || alpha == 0.0 || humanDir.empty() || chatDir.empty()) {
         std::cerr << "Some options are required and should not be null.\n" << std::endl;
         std::cerr << "Usage: " << argv[0] << "-k <k_value> -a <alpha> -s <size?limit> -f <filters> -o <result_file> -g <gpt_folder_directory> -h <human_folder_directory> -t <texts_to_analyze_directory>" << std::endl;
         std::cerr << "<k_value> and <alpha> should not be null. Directories cannot be null either." << std::endl;
