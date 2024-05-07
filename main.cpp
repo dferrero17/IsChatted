@@ -202,18 +202,59 @@ class Prompt {
 
         void start(){
             
-            // populate both tables
-            for (const auto & entry : std::filesystem::directory_iterator(chatDir))
-                gptPrompt.populateTable(entry.path().string());
+            if (chatDir.back() == '/'){
+                for (const auto & entry : std::filesystem::directory_iterator(chatDir))
+                    gptPrompt.populateTable(entry.path().string());
+            }
+            else {
+                try
+                {
+                    gptPrompt.populateTable(chatDir);
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << "Not a directory nor a file. Directories should end with the '/' char." << std::endl;
+                    std::cerr << e.what() << '\n';
+                }
+                
+            }
 
-            for (const auto & entry : std::filesystem::directory_iterator(humanDir))
-                humanPrompt.populateTable(entry.path().string());
+            if (humanDir.back() == '/'){
+                for (const auto & entry : std::filesystem::directory_iterator(chatDir))
+                    humanPrompt.populateTable(entry.path().string());
+            }
+            else {
+                try
+                {
+                    humanPrompt.populateTable(humanDir);
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << "Not a directory nor a file. Directories should end with the '/' char." << std::endl;
+                    std::cerr << e.what() << '\n';
+                }
+                
+            }
 
             //gptPrompt.printAlphabet();
             //humanPrompt.printAlphabet();
-            for (const auto & entry : std::filesystem::directory_iterator(inputDir))
-                compareToReferences(entry.path().string());
-
+            if (inputDir.back() == '/'){
+                for (const auto & entry : std::filesystem::directory_iterator(inputDir))
+                    compareToReferences(entry.path().string());
+            }
+            else {
+                try
+                {
+                    compareToReferences(inputDir);
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << "Not a directory nor a file. Directories should end with the '/' char." << std::endl;
+                    std::cerr << e.what() << '\n';
+                }
+                
+            };
+                
         };
 
     private:
