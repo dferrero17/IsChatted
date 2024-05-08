@@ -207,6 +207,7 @@ class Prompt {
                     gptPrompt.populateTable(entry.path().string());
             }
             else {
+                std::cout << chatDir << std::endl;
                 try
                 {
                     gptPrompt.populateTable(chatDir);
@@ -224,6 +225,7 @@ class Prompt {
                     humanPrompt.populateTable(entry.path().string());
             }
             else {
+                std::cout << humanDir << std::endl;
                 try
                 {
                     humanPrompt.populateTable(humanDir);
