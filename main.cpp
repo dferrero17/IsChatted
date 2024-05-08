@@ -207,6 +207,7 @@ class Prompt {
                     gptPrompt.populateTable(entry.path().string());
             }
             else {
+                std::cout << chatDir << std::endl;
                 try
                 {
                     gptPrompt.populateTable(chatDir);
@@ -220,10 +221,11 @@ class Prompt {
             }
 
             if (humanDir.back() == '/'){
-                for (const auto & entry : std::filesystem::directory_iterator(chatDir))
+                for (const auto & entry : std::filesystem::directory_iterator(humanDir))
                     humanPrompt.populateTable(entry.path().string());
             }
             else {
+                std::cout << humanDir << std::endl;
                 try
                 {
                     humanPrompt.populateTable(humanDir);
